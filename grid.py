@@ -1,133 +1,155 @@
-#Christos Goulas 
-#A.M.:2677
+"""Create a simple 10x10 spatial grid index from a list of points.
 
+This script reads Beijing_restaurants.txt, writes `ids.txt` (ID + coords),
+and generates `grid.grd` (concatenated records) and `grid.dir` (metadata with
+cell offsets and counts).
+"""
+
+from __future__ import annotations
+
+import argparse
 import time
-import io
-import fileinput
+from typing import List, Tuple, Dict
 
-s_time = time.time()
-counter=0
-x_min=9999999
-x_max=-9999999
-y_min=9999999
-y_max=-9999999
-x_array=[]
-y_array=[]
-with open('Beijing_restaurants.txt','r') as b_file:
-    next(b_file)
-    for line in b_file:
-        sp=line.strip("\n").split(" ")
-        if(x_min>float(sp[0])):
-            x_min=float(sp[0])
-        if(x_max<float(sp[0])):
-            x_max=float(sp[0])
-        if(y_min>float(sp[1])):
-            y_min=float(sp[1])
-        if(y_max<float(sp[1])):
-            y_max=float(sp[1])
-    print("x_min: "+str(x_min))
-    print("x_max: "+str(x_max))
-    print("y_min: "+str(y_min))
-    print("y_max: "+str(y_max))
-b_file.close()
-x_adder=float((x_max-x_min)/10)
-y_adder=float((y_max-y_min)/10)
-print("x_adder: ",x_adder)
-print("y_adder: ",y_adder)
-for i in range(0,11):
-    x_array.append(x_min+(i*x_adder))
-    y_array.append(y_min+(i*y_adder))
-print("<--X Array-->")
-for i in range(0,11):
-    if(len(str(x_array[i]))>6):
-        x_array[i]=round(x_array[i],6)
-    print(i,":",x_array[i])
-print("<--Y Array-->")
-for i in range(0,11):
-    if(len(str(y_array[i]))>6):
-        y_array[i]=round(y_array[i],6)
-    print(i,":",y_array[i])
-counter=1
-tostring=""
-with open('Beijing_restaurants.txt','r') as b_file:
-    next(b_file)    
-    with open('ids.txt','w+') as id_file:
-        for b_line in b_file:
-            l=b_line.split()
-            tostring+=str(counter)
-            for i in l:
-                tostring+=" "+str(i)
-            id_file.write(tostring+"\n")
-            tostring=""
-            counter+=1
-    id_file.close()
-b_file.close()
+Point = Tuple[float, float]
 
 
-print("Loading...")
+def read_points(path: str) -> List[Point]:
+    """Read points from a whitespace-separated file, skipping header.
 
-#I'm going to save all the information that i want to write to the grd and then write it
-dimension=10
-list_of_lists=[[[] for _ in range(dimension)] for _ in range(dimension)]
-matrix_x=0
-matrix_y=0
-with open('ids.txt','r') as b_file:
-    next(b_file)
-    for line in b_file:
-        l=line.split()
-        for i in range (0,11):
-            if(i==10 and float(l[1])==x_array[i]):
-                matrix_x=i-1
-                break
-            if(float(l[1])<x_array[i]):
-                matrix_x=i-1
-                break
-        for i in range(0,11):
-            if(i==10 and float(l[2])==y_array[i]):
-                matrix_y=i-1
-                break
-            if(float(l[2])<y_array[i]):
-                matrix_y=i-1
-                break
-        list_of_lists[matrix_x][matrix_y].append(str(l[0])+" "+"%.6f"%float(l[1])+" "+"%.6f"%float(l[2]))
-b_file.close()
-
-meta_data=[[int for _ in range(dimension)] for _ in range(dimension)]
-chars=0
-flag=0
-final=0
-with open('grid.grd','w+') as grd_file:
-    for i in range(0,10):
-        for j in range(0,10):
-            if(not(list_of_lists[i][j])):
-                print(str(i)+" "+str(j)+":"+"EMPTY")
-                flag=0
+    Each data line is expected to contain at least two numeric values (x y).
+    Returns list of (x, y).
+    """
+    points: List[Point] = []
+    with open(path, "r", encoding="utf-8") as fh:
+        # skip header if present
+        _ = fh.readline()
+        for line in fh:
+            parts = line.strip().split()
+            if len(parts) < 2:
                 continue
-            if(flag==0):
-                temp=grd_file.tell()
-                print("F.Tell() says: ",temp)
-                print("chars: ",chars)
-                meta_data[i][j]=chars
-                flag=1
-            for l in list_of_lists[i][j]:
-                final+=1
-                chars+=grd_file.write(str(l)+"\n")
-            flag=0
-        flag=0
-grd_file.close()
+            x_val = float(parts[0])
+            y_val = float(parts[1])
+            points.append((x_val, y_val))
+    return points
 
-total=0
-with open('grid.dir','w+') as dir_file:
-    dir_file.write("%.6f"%x_min+" "+"%.6f"%x_max+" "+"%.6f"%y_min+" "+"%.6f"%y_max+"\n")
-    for i in range(0,10):
-        for j in range(0,10):
-            if(len(list_of_lists[i][j])!=0 and meta_data[i][j]!=int):
-                total+=len(list_of_lists[i][j])
-                dir_file.write(str(i)+" "+str(j)+" "+str(meta_data[i][j])+" "+str(len(list_of_lists[i][j]))+"\n")
-            else:
-                continue
-dir_file.close()
-print("--- %s seconds ---" % (time.time() - s_time))
-print("TOTAL: ",total)
-print("FINAL: ",final)
-print("Total chars: ",chars)
+
+def compute_bounds(points: List[Point]) -> Tuple[float, float, float, float]:
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+def build_grid(
+    points: List[Point], dimension: int = 10
+) -> Tuple[List[List[List[str]]], List[float], List[float]]:
+    """Partition points into a `dimension x dimension` grid.
+
+    Returns (cells, x_edges, y_edges) where cells[i][j] is a list of record lines.
+    """
+    x_min, x_max, y_min, y_max = compute_bounds(points)
+    x_step = (x_max - x_min) / dimension
+    y_step = (y_max - y_min) / dimension
+
+    x_edges = [round(x_min + i * x_step, 6) for i in range(dimension + 1)]
+    y_edges = [round(y_min + i * y_step, 6) for i in range(dimension + 1)]
+
+    cells: List[List[List[str]]] = [
+        [[] for _ in range(dimension)] for _ in range(dimension)
+    ]
+
+    # Assign points to cells
+    for idx, (x, y) in enumerate(points, start=1):
+        # find x index
+        xi = next(
+            (i - 1 for i in range(1, dimension + 1) if x <= x_edges[i]), dimension - 1
+        )
+        yi = next(
+            (j - 1 for j in range(1, dimension + 1) if y <= y_edges[j]), dimension - 1
+        )
+        record = f"{idx} {x:.6f} {y:.6f}"
+        cells[xi][yi].append(record)
+
+    return cells, x_edges, y_edges
+
+
+def write_index(
+    cells: List[List[List[str]]],
+    x_edges: List[float],
+    y_edges: List[float],
+    grd_path: str = "grid.grd",
+    dir_path: str = "grid.dir",
+) -> None:
+    """Write `grid.grd` and `grid.dir`. Offsets are byte offsets into `grid.grd`."""
+    dimension = len(cells)
+    # write grd and capture offsets
+    offsets: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    total_chars = 0
+    with open(grd_path, "w", encoding="utf-8") as grd_fh:
+        for i in range(dimension):
+            for j in range(dimension):
+                bucket = cells[i][j]
+                if not bucket:
+                    continue
+                offsets[(i, j)] = (grd_fh.tell(), len(bucket))
+                for record in bucket:
+                    total_chars += grd_fh.write(record + "\n")
+
+    # write directory file: bounds then per-cell info
+    x_min, x_max = x_edges[0], x_edges[-1]
+    y_min, y_max = y_edges[0], y_edges[-1]
+    with open(dir_path, "w", encoding="utf-8") as dir_fh:
+        dir_fh.write(f"{x_min:.6f} {x_max:.6f} {y_min:.6f} {y_max:.6f}\n")
+        for (i, j), (offset, count) in offsets.items():
+            dir_fh.write(f"{i} {j} {offset} {count}\n")
+
+
+def write_ids(points: List[Point], out_path: str = "ids.txt") -> None:
+    with open(out_path, "w", encoding="utf-8") as fh:
+        for idx, (x, y) in enumerate(points, start=1):
+            fh.write(f"{idx} {x:.6f} {y:.6f}\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Build a simple 10x10 spatial grid index from a points file."
+    )
+    parser.add_argument(
+        "input", nargs="?", default="Beijing_restaurants.txt", help="input points file"
+    )
+    parser.add_argument(
+        "--dimension", "-d", type=int, default=10, help="grid dimension (default 10)"
+    )
+    args = parser.parse_args()
+
+    start = time.time()
+    points = read_points(args.input)
+    if not points:
+        print(f"No points found in '{args.input}'; exiting")
+        return
+
+    cells, x_edges, y_edges = build_grid(points, dimension=args.dimension)
+    write_ids(points)
+    write_index(cells, x_edges, y_edges)
+    elapsed_ms = (time.time() - start) * 1000
+
+    occupied = [len(bucket) for row in cells for bucket in row if bucket]
+    x_min, x_max, y_min, y_max = compute_bounds(points)
+    total_cells = args.dimension**2
+
+    print(f"Indexed {len(points):,} points from '{args.input}' in {elapsed_ms:.1f} ms")
+    dim = args.dimension
+    print(f"  Grid size:        {dim} x {dim} ({len(occupied)}/{total_cells} occupied)")
+    print(
+        f"  Bounding box:     x=[{x_min:.6f}, {x_max:.6f}] y=[{y_min:.6f}, {y_max:.6f}]"
+    )
+    if occupied:
+        avg = sum(occupied) / len(occupied)
+        print(
+            f"  Points per cell:  avg={avg:.1f} max={max(occupied)} min={min(occupied)}"
+        )
+    print("  Output files:     ids.txt, grid.grd, grid.dir")
+
+
+if __name__ == "__main__":
+    main()

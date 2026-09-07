@@ -1,137 +1,114 @@
-#Christos Goulas
-#A.M.: 2677
+"""Range query using the grid index (grid.dir + grid.grd).
 
-import sys 
+Usage: python3 sp_queries.py <x_low> <x_high> <y_low> <y_high>
+"""
+
+from __future__ import annotations
+
+import argparse
 import time
-import io
+from typing import Dict, List, Tuple
 
-x_low=float(sys.argv[1])
-x_high=float(sys.argv[2])
-y_low=float(sys.argv[3])
-y_high=float(sys.argv[4])
-print("x_low",x_low)
-print("x_high",x_high)
-print("y_low",y_low)
-print("y_high",y_high)
-x_array=[]
-y_array=[]
-#creating a dictionary from grid dir, using as key x,y coordinate and value a list with the other 2 elements of the list
-grid_dict=dict()
-with open("grid.dir","r") as dir_file:
-    first_line=dir_file.readline()
-    grid=first_line.split()
-    x_min=float(grid[0])
-    x_max=float(grid[1])
-    y_min=float(grid[2])
-    y_max=float(grid[3])
-    for line in dir_file:
-        l=line.split()
-        id=str(l[0])+str(l[1])
-        l.pop(0)
-        l.pop(0)        
-        d={id:l}
-        grid_dict.update(d)
-dir_file.close()
-x_adder=float((x_max-x_min)/10)
-y_adder=float((y_max-y_min)/10)
-for i in range(0,11):
-    x_array.append(x_min+(i*x_adder))
-    y_array.append(y_min+(i*y_adder))
-print("<--X Array-->")
-for i in range(0,11):
-    if(len(str(x_array[i]))>6):
-        x_array[i]=round(x_array[i],6)
-    print(i,":",x_array[i])
-print("<--Y Array-->")
-for i in range(0,11):
-    if(len(str(y_array[i]))>6):
-        y_array[i]=round(y_array[i],6)
-    print(i,":",y_array[i])
 
-flag_x_low=0
-flag_y_low=0
-flag_x_high=0
-flag_y_high=0
-for i in range(0,11):
-    if(x_array[i]==x_low) and flag_x_low==0:
-        flag_x_low=2
-        xl=i
-    if(x_array[i]==x_high and flag_x_high==0):
-        flag_x_high=2
-        xh=i
-    if(y_array[i]==y_low and flag_y_low==0):
-        flag_y_low=2
-        yl=i
-    if(y_array[i]==y_high and flag_y_high==0):
-        flag_y_high=2
-        yh=i
-    if(x_low<x_array[i] and flag_x_low==0):
-        flag_x_low=1
-        if(i==0):
-            xl=0
-        else:
-            xl=i-1
-    if(x_high<x_array[i] and flag_x_high==0):
-        flag_x_high=1
-        if(i==0):
-            xh=0
-        else:
-            xh=i
-    if(y_low<y_array[i] and flag_y_low==0):
-        flag_y_low=1
-        if(i==0):
-            yl=0
-        else:
-            yl=i-1
-    if(y_high<y_array[i] and flag_y_high==0):
-        flag_y_high=1
-        if(i==0):
-            yh=0
-        else:
-            yh=i
-print(flag_x_low)
-print(flag_x_high)
-print(flag_y_low)
-print(flag_y_high)
-print("xl: ",xl)
-print("xh: ",xh)
-print("yl: ",yl)
-print("yh: ",yh)
-read_list=[]
-buf=[]
-ch=0
-print_counter=0
-with open("grid.grd","r") as grd_file:
-    for x in range(xl,xh):
-        for y in range(yl,yh):
-            if(x==0 and (y==8 or y==9)):
+def load_grid_dir(
+    path: str = "grid.dir",
+) -> Tuple[float, float, float, float, Dict[Tuple[int, int], Tuple[int, int]]]:
+    with open(path, "r", encoding="utf-8") as fh:
+        first = fh.readline().split()
+        x_min, x_max, y_min, y_max = map(float, first)
+        grid: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        for line in fh:
+            parts = line.split()
+            if len(parts) < 4:
                 continue
-            if(flag_x_high==flag_x_low==flag_y_high==flag_y_low==2):
-                key=str(x)+str(y)
-                read_list=grid_dict.get(key)
-                to_seek=int(read_list[0])
-                cntr=int(read_list[1])
-                grd_file.seek(to_seek)
-                while(cntr>0):
-                    print(str(x)+" "+str(y)+" "+str(grd_file.readline()))
-                    print_counter+=1
-                    cntr=cntr-1
-            else:
-                key=str(x)+str(y)
-                read_list=grid_dict.get(key)
-                to_seek=int(read_list[0])
-                cntr=int(read_list[1])
-                grd_file.seek(to_seek)
-                if(x==xl or y==yl or x==xh-1 or y==yh-1):
-                    while(cntr>0):
-                        l=grd_file.readline().split()
-                        if(float(l[1])>=x_low and float(l[1])<=x_high and float(l[2])>=y_low and float(l[2])<=y_high):
-                            print("CHECKED: "+str(x)+" "+str(y)+" "+str(l[0])+" "+str(l[1])+" "+str(l[2]))
-                            print_counter+=1
-                        cntr=cntr-1
-                else:
-                    while(cntr>0):
-                        print("UNCHECKED: "+str(x)+" "+str(y)+" "+str(grd_file.readline()))
-                        print_counter+=1
-                        cntr=cntr-1                    
-print("PC:",print_counter)
+            i, j, offset, count = (
+                int(parts[0]),
+                int(parts[1]),
+                int(parts[2]),
+                int(parts[3]),
+            )
+            grid[(i, j)] = (offset, count)
+    return x_min, x_max, y_min, y_max, grid
+
+
+def edges(
+    x_min: float, x_max: float, y_min: float, y_max: float, dimension: int = 10
+) -> Tuple[List[float], List[float]]:
+    x_step = (x_max - x_min) / dimension
+    y_step = (y_max - y_min) / dimension
+    x_edges = [round(x_min + i * x_step, 6) for i in range(dimension + 1)]
+    y_edges = [round(y_min + i * y_step, 6) for i in range(dimension + 1)]
+    return x_edges, y_edges
+
+
+def find_cell_index(value: float, edges_list: List[float]) -> int:
+    # return index of cell (0-based)
+    for i in range(1, len(edges_list)):
+        if value <= edges_list[i]:
+            return i - 1
+    return len(edges_list) - 2
+
+
+def range_query(
+    x_low: float,
+    x_high: float,
+    y_low: float,
+    y_high: float,
+    grid_dir: str = "grid.dir",
+    grd_path: str = "grid.grd",
+    dimension: int = 10,
+) -> List[Tuple[int, int, str, float, float]]:
+    """Return every record whose (x, y) falls inside the given box.
+
+    Each result is `(cell_x, cell_y, id, x, y)`.
+    """
+    x_min, x_max, y_min, y_max, grid = load_grid_dir(grid_dir)
+    x_edges, y_edges = edges(x_min, x_max, y_min, y_max, dimension)
+
+    xl = find_cell_index(x_low, x_edges)
+    xh = find_cell_index(x_high, x_edges) + 1
+    yl = find_cell_index(y_low, y_edges)
+    yh = find_cell_index(y_high, y_edges) + 1
+
+    results: List[Tuple[int, int, str, float, float]] = []
+    with open(grd_path, "r", encoding="utf-8") as grd:
+        for xi in range(xl, xh):
+            for yi in range(yl, yh):
+                key = (xi, yi)
+                if key not in grid:
+                    continue
+                offset, count = grid[key]
+                grd.seek(offset)
+                for _ in range(count):
+                    parts = grd.readline().split()
+                    if len(parts) < 3:
+                        continue
+                    id_str, x_val, y_val = parts[0], float(parts[1]), float(parts[2])
+                    if x_low <= x_val <= x_high and y_low <= y_val <= y_high:
+                        results.append((xi, yi, id_str, x_val, y_val))
+    return results
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Range query against grid index")
+    parser.add_argument("x_low", type=float)
+    parser.add_argument("x_high", type=float)
+    parser.add_argument("y_low", type=float)
+    parser.add_argument("y_high", type=float)
+    args = parser.parse_args()
+
+    box = f"x=[{args.x_low}, {args.x_high}]  y=[{args.y_low}, {args.y_high}]"
+    print(f"Searching box {box} ...")
+    start = time.time()
+    results = range_query(args.x_low, args.x_high, args.y_low, args.y_high)
+    elapsed_ms = (time.time() - start) * 1000
+
+    print(f"{'cell':>8}  {'id':>8}  {'x':>12}  {'y':>12}")
+    for xi, yi, id_str, x_val, y_val in results:
+        print(f"{f'({xi},{yi})':>8}  {id_str:>8}  {x_val:12.6f}  {y_val:12.6f}")
+
+    print(f"\nFound {len(results)} point(s) in {elapsed_ms:.2f} ms")
+
+
+if __name__ == "__main__":
+    main()
